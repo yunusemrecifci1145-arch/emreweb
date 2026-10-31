@@ -171,7 +171,7 @@
               <i class="fa-solid fa-list-check text-teal-600"></i>
               <span>📋 Eklenen Tüm Besinler ve Makro Dökümü</span>
             </h3>
-            <span class="text-[11px] text-slate-400">Satır toplamları ile üst özet kartlar birebir senkronizedir</span>
+            <span class="text-[11px] text-slate-400">Standart öğün sırasına göre otomatik dizilir ve üst özet kartlarla birebir senkronizedir</span>
           </div>
           <div class="overflow-x-auto border border-slate-200 rounded-xl bg-white">
             <table class="w-full text-left text-xs divide-y divide-slate-200">
@@ -300,6 +300,7 @@
   </footer>
 
   <script>
+    // Standart Öğün Sıralaması (Kahvaltı -> Kuşluk -> Öğle -> İkindi -> Akşam -> Gece)
     const MEALS = [
       "Kahvaltı", 
       "Kuşluk (Ara 1)", 
@@ -310,8 +311,8 @@
     ];
 
     let allFoods = [];
-    let foodMap = new Map(); // O(1) hızlı erişim için Map önbelleği
-    let searchTimers = {};   // Debounce zamanlayıcıları
+    let foodMap = new Map();
+    let searchTimers = {};
     let tuketimListesi = {
       "Kahvaltı": [],
       "Kuşluk (Ara 1)": [],
@@ -323,12 +324,21 @@
 
     let cachedTurkishFont = null;
 
-    // Kesin matematiksel yuvarlama yardımcıları (Satır ve Kart Toplamı Uyuşmazlığını %100 Engeller)
     function round1(val) {
       return Math.round((Number(val) + Number.EPSILON) * 10) / 10;
     }
     function round2(val) {
       return Math.round((Number(val) + Number.EPSILON) * 100) / 100;
+    }
+
+    // Bilinen yazım hatalarını (Örn: Gernlik -> Gemlik) temizleyen yardımcı fonksiyon
+    function fixTypos(str) {
+      if (!str) return "";
+      return String(str)
+        .replace(/Gernlik/g, "Gemlik")
+        .replace(/gernlik/g, "gemlik")
+        .replace(/GERNLİK/g, "GEMLİK")
+        .replace(/GERNLIK/g, "GEMLIK");
     }
 
     function trNormalize(text) {
@@ -351,11 +361,10 @@
     // ============================================================================
     const DIYETISYEN_DEGISIM_KURALLARI = [
       // 1. YAĞ VE ZEYTİN GRUBU (1 Yağ Değişimi = 5g Yağ = 45 kcal)
-      { keys: ["zeytin", "siyah zeytin", "yesil zeytin", "sele zeytin", "kalamata"], Exclude: ["yagi", "ezmesi", "salata", "pogaca", "acma", "ekmek"], degisimAciklama: "10 Adet Orta Boy Zeytin", birimAdet: 10, birimIsim: "Adet Zeytin", netGram: 30, isPorsiyonBazli: false },
+      { keys: ["zeytin", "siyah zeytin", "yesil zeytin", "sele zeytin", "gemlik", "kalamata"], Exclude: ["yagi", "ezmesi", "salata", "pogaca", "acma", "ekmek"], degisimAciklama: "10 Adet Orta Boy Zeytin", birimAdet: 10, birimIsim: "Adet Zeytin", netGram: 30, isPorsiyonBazli: false },
       { keys: ["zeytin ezmesi"], Exclude: [], degisimAciklama: "1 Tatlı Kaşığı Zeytin Ezmesi", birimAdet: 1, birimIsim: "Tatlı Kaşığı", netGram: 10, isPorsiyonBazli: false },
-      // CEVİZ DÜZELTMESİ: 8g Ceviz (~5.2g yağ) = 1 Yağ Değişimi | 10g Ceviz (~6.5g yağ) = 1 Porsiyon (1.3 Yağ Değişimi)
-      { keys: ["ceviz", "ceviz ici"], Exclude: ["tatli", "baklava", "sucuk", "ezme", "eriste", "salata", "ekmek", "kek"], degisimAciklama: "2 Küçük/Orta Tam Ceviz İçi (~5g Yağ)", birimAdet: 2, birimIsim: "Tam Ceviz İçi", netGram: 8, isPorsiyonBazli: false, ozelOnGramAciklama: "1 Porsiyon / 2 İri Ceviz İçi (10g — ~6.5g Yağ / 1.3 Değişim)" },
-      { keys: ["findik", "cig findik", "kavrulmus findik"], Exclude: ["ezme", "lahmacun", "sut", "krema", "un"], degisimAciklama: "7-8 Adet Fındık (~5g Yağ)", birimAdet: 8, birimIsim: "Adet Fındık", netGram: 8, isPorsiyonBazli: false, ozelOnGramAciklama: "1 Porsiyon / 10 Adet Fındık (10g — ~6.2g Yağ / 1.25 Değişim)" },
+      { keys: ["ceviz", "ceviz ici"], Exclude: ["tatli", "baklava", "sucuk", "ezme", "eriste", "salata", "ekmek", "kek"], degisimAciklama: "2 Küçük/Orta Tam Ceviz İçi (~5g Yağ)", birimAdet: 2, birimIsim: "Tam Ceviz İçi", netGram: 8, isPorsiyonBazli: false, ozelOnGramAciklama: "1 Porsiyon / 2 İri Ceviz İçi (10g - ~6.5g Yağ / 1.3 Değişim)" },
+      { keys: ["findik", "cig findik", "kavrulmus findik"], Exclude: ["ezme", "lahmacun", "sut", "krema", "un"], degisimAciklama: "7-8 Adet Fındık (~5g Yağ)", birimAdet: 8, birimIsim: "Adet Fındık", netGram: 8, isPorsiyonBazli: false, ozelOnGramAciklama: "1 Porsiyon / 10 Adet Fındık (10g - ~6.2g Yağ / 1.25 Değişim)" },
       { keys: ["badem", "cig badem", "kavrulmus badem"], Exclude: ["sut", "ezme", "un", "sekeri", "tatli"], degisimAciklama: "8-10 Adet Badem (~5g Yağ)", birimAdet: 10, birimIsim: "Adet Badem", netGram: 10, isPorsiyonBazli: false },
       { keys: ["kaju"], Exclude: [], degisimAciklama: "6-8 Adet Kaju (~5g Yağ)", birimAdet: 7, birimIsim: "Adet Kaju", netGram: 10, isPorsiyonBazli: false },
       { keys: ["antep fistigi", "siirt fistigi"], Exclude: ["baklava", "ezme", "sarma", "katmer", "helva", "cikolata"], degisimAciklama: "10-12 Adet Antep Fıstığı (~5g Yağ)", birimAdet: 12, birimIsim: "Adet Antep Fıstığı", netGram: 10, isPorsiyonBazli: false },
@@ -424,7 +433,7 @@
       { keys: ["kefir", "sade kefir"], Exclude: ["meyveli"], degisimAciklama: "1 Su Bardağı Kefir (200 ml)", birimAdet: 1, birimIsim: "Su Bardağı Kefir", netGram: 200, isPorsiyonBazli: false },
       { keys: ["cacik"], Exclude: [], degisimAciklama: "1 Kase Cacık", birimAdet: 1, birimIsim: "Kase Cacık", netGram: 200, isPorsiyonBazli: false },
 
-      // 5. PEYNİR, YUMURTA, KAHVALTILIK ET DEĞİŞİMLERİ (1 Et Değişimi = 69 kcal / 6g Pro, 5g Yağ)
+      // 5. PEYNİR, YUMURTA, KAHVALTILIK ET DEĞİŞİMLERİ
       { keys: ["haslanmis yumurta", "yumurta", "sahanda yumurta", "pose yumurta", "rafadan yumurta"], Exclude: ["kiymali", "sucuklu", "pastirmali", "ispanak", "menemen", "omlet", "pide", "salata", "pazi", "kavurma", "piyaz", "beyaz"], degisimAciklama: "1 Adet Yumurta (1 Et Değişimi)", birimAdet: 1, birimIsim: "Adet Yumurta", netGram: 50, isPorsiyonBazli: false },
       { keys: ["yumurta aki", "yumurta beyazi"], Exclude: [], degisimAciklama: "3 Adet Yumurta Akı", birimAdet: 3, birimIsim: "Adet Yumurta Akı", netGram: 100, isPorsiyonBazli: false },
       { keys: ["beyaz peynir", "ezine peyniri", "tulum peyniri", "keci peyniri", "koyun peyniri", "tam yagli beyaz peynir", "yarim yagli beyaz peynir", "light beyaz peynir", "orgu peyniri", "cecil peyniri", "van otlu peynir", "mihalic peyniri", "hellim"], Exclude: ["borek", "salata", "makarna", "gozleme", "pide", "omlet", "tost", "girit", "eriste", "pogaca", "simit"], degisimAciklama: "1 Dilim / Kibrit Kutusu Peynir", birimAdet: 1, birimIsim: "Dilim Peynir (30g)", netGram: 30, isPorsiyonBazli: false },
@@ -436,7 +445,7 @@
       { keys: ["hindi fume", "dana jambon", "salam", "sosis"], Exclude: ["tost", "sandvic", "pizza", "salata"], degisimAciklama: "2-3 Dilim Füme/Şarküteri", birimAdet: 2, birimIsim: "Dilim", netGram: 30, isPorsiyonBazli: false },
       { keys: ["ton baligi"], Exclude: ["salata", "makarna", "sandvic", "pizza"], degisimAciklama: "1 Küçük Konserve (Süzülmüş)", birimAdet: 1, birimIsim: "Küçük Kutu (80g)", netGram: 80, isPorsiyonBazli: false },
 
-      // 6. ÇİĞ SEBZE VE YEŞİLLİKLER (Kahvaltılık / Söğüş - Porsiyon Bazlı)
+      // 6. ÇİĞ SEBZE VE YEŞİLLİKLER (Porsiyon Bazlı)
       { keys: ["domates", "ceri domates", "pembe domates", "salkim domates"], Exclude: ["corba", "pilav", "sos", "kurusu", "salca", "yemegi", "dolma", "suyu"], degisimAciklama: "1 Orta Boy Domates (veya 5-6 Çeri)", birimAdet: 1, birimIsim: "Orta Boy Domates", netGram: 120, isPorsiyonBazli: true },
       { keys: ["salatalik", "hiyar", "cengelkoy salatalik"], Exclude: ["corba", "tursu", "cacik"], degisimAciklama: "1 Orta Boy Salatalık", birimAdet: 1, birimIsim: "Orta Boy Salatalık", netGram: 120, isPorsiyonBazli: true },
       { keys: ["yesil biber", "sivri biber", "carliston biber", "kapya biber", "kirmizi biber"], Exclude: ["dolma", "corba", "kizartma", "yogurtlu", "meze", "salca", "koz"], degisimAciklama: "2-3 Adet Biber", birimAdet: 2, birimIsim: "Adet Biber", netGram: 80, isPorsiyonBazli: true },
@@ -448,7 +457,6 @@
       { keys: ["bitter cikolata", "sutlu cikolata", "beyaz cikolata"], Exclude: ["sos", "pasta", "kek", "kurabiye", "sut", "mus"], degisimAciklama: "2 Kare Çikolata (10g)", birimAdet: 2, birimIsim: "Kare Çikolata", netGram: 10, isPorsiyonBazli: true }
     ];
 
-    // Kuralları ilk yüklemede bir kez normalize et (Performans için)
     const NORMALIZED_RULES = DIYETISYEN_DEGISIM_KURALLARI.map(r => ({
       ...r,
       normKeys: r.keys.map(k => trNormalize(k)),
@@ -556,20 +564,20 @@
       };
     }
 
-    // Veritabanını tek seferde belleğe (Cache) alır ve tüm ağır string/regex işlemlerini 1 kez yapar
     async function init() {
       renderMealsUI();
       hesaplaVeGuncelle();
 
       try {
-        let rawFoodList = null;
-        // SessionStorage Cache Kontrolü (Sayfa yenilenmelerinde disk okumayı hızlandırır)
-        const cachedJson = sessionStorage.getItem('emreylediyet_foods_cache_v2');
-        if (cachedJson) {
-          try {
-            rawFoodList = JSON.parse(cachedJson);
-          } catch (e) {
-            rawFoodList = null;
+        let rawFoodList = window.__PRELOADED_FOODS__ || null;
+        if (!rawFoodList) {
+          const cachedJson = sessionStorage.getItem('emreylediyet_foods_cache_v3');
+          if (cachedJson) {
+            try {
+              rawFoodList = JSON.parse(cachedJson);
+            } catch (e) {
+              rawFoodList = null;
+            }
           }
         }
 
@@ -579,19 +587,19 @@
           const raw = await res.json();
           rawFoodList = Array.isArray(raw) ? raw : (raw.foods || raw.data || []);
           try {
-            sessionStorage.setItem('emreylediyet_foods_cache_v2', JSON.stringify(rawFoodList));
+            sessionStorage.setItem('emreylediyet_foods_cache_v3', JSON.stringify(rawFoodList));
           } catch (e) { /* Kota aşımı olursa yoksay */ }
         }
 
         allFoods = rawFoodList.map((f, index) => {
           const id = Number(f.id ?? f["ID"] ?? (index + 1));
-          const kategori = f.kategori ?? f["Kategori"] ?? "Genel";
-          const besin_adi = f.besin_adi ?? f["Besin Adı"] ?? "Bilinmeyen";
-          const standart_porsiyon = f.standart_porsiyon ?? f["Standart Porsiyon"] ?? "1 Porsiyon";
+          const kategori = fixTypos(f.kategori ?? f["Kategori"] ?? "Genel");
+          // "Gernlik" gibi yazım hataları burada otomatik olarak "Gemlik" yapılır
+          const besin_adi = fixTypos(f.besin_adi ?? f["Besin Adı"] ?? "Bilinmeyen");
+          const standart_porsiyon = fixTypos(f.standart_porsiyon ?? f["Standart Porsiyon"] ?? "1 Porsiyon");
           const referans_miktar_g = Number(f.referans_miktar_g ?? f["Referans Miktar (g/ml)"] ?? 100);
-          const arama_anahtarlari = f.arama_anahtarlari ?? f["Arama Anahtarları (Alias)"] ?? "";
+          const arama_anahtarlari = fixTypos(f.arama_anahtarlari ?? f["Arama Anahtarları (Alias)"] ?? "");
 
-          // ÖN-HESAPLAMA (Pre-computation): Her aramada tekrar çalışmaması için 1 kez hesaplanır
           const _nameNorm = trNormalize(besin_adi);
           const _aliasNorm = trNormalize(arama_anahtarlari);
           const _catNorm = trNormalize(kategori);
@@ -600,17 +608,8 @@
           const _dKural = computeDiyetisyenDegisimKurali(_isYemek, _nameNorm, _aliasNorm);
           const _hInfo = computeHastanePorsiyonu(_isYemek, _catNorm, _nameNorm, referans_miktar_g);
 
-          let _optLabel = "";
-          if (_isYemek) {
-            _optLabel = _hInfo
-              ? `${besin_adi} [Hastane: ${_hInfo.gram}g | 1 Porsiyon: ${referans_miktar_g}g]`
-              : `${besin_adi} [1 Porsiyon: ${standart_porsiyon} - ${referans_miktar_g}g]`;
-          } else if (_dKural) {
-            const birimEtiket = _dKural.isPorsiyonBazli ? "1 Porsiyon" : "1 Değişim";
-            _optLabel = `${besin_adi} [${birimEtiket}: ${_dKural.degisimAciklama} - ${_dKural.netGram}g]`;
-          } else {
-            _optLabel = `${besin_adi} [${standart_porsiyon} - ${referans_miktar_g}g]`;
-          }
+          // UI DÜZELTMESİ: Açılır menüde (Selectbox) sadece saf besin/yemek adı görünür!
+          const _optLabel = besin_adi;
 
           const foodObj = {
             id,
@@ -781,7 +780,6 @@
       }
     }
 
-    // Seçenekleri Dolduran Ana Fonksiyon (DocumentFragment ile sıfır kasma)
     function populatePortionOptions(mIdx, food) {
       const portionSelect = document.getElementById(`food_portion_${mIdx}`);
       if (!portionSelect || !food) return;
@@ -795,9 +793,7 @@
       const hInfo = food._hInfo;
       const degisimKurali = food._dKural;
 
-      // =========================================================================
-      // DURUM 1: YEMEKLER, ÇORBALAR, PİLAVLAR, SALATALAR (SADECE PORSİYON USULÜ)
-      // =========================================================================
+      // DURUM 1: YEMEKLER, ÇORBALAR, PİLAVLAR, SALATALAR (PORSİYON USULÜ)
       if (yemekMi) {
         if (hInfo) {
           const grpHastane = document.createElement('optgroup');
@@ -920,9 +916,7 @@
         return;
       }
 
-      // =========================================================================
       // DURUM 2: TEMEL BESİNLER (GERÇEK DİYETİSYEN DEĞİŞİM KURALLARI + PORSİYON)
-      // =========================================================================
       const bazDegisimGram = degisimKurali ? degisimKurali.netGram : refG;
       const bazMultiplier = bazDegisimGram / refG;
       const bazAciklama = degisimKurali ? degisimKurali.degisimAciklama : sp;
@@ -933,7 +927,6 @@
       const grpDegisim = document.createElement('optgroup');
       grpDegisim.label = `⚖️ Diyetisyen ${terimAdi} Seçenekleri (1 ${terimAdi} = ${bazAciklama} / ${bazDegisimGram}g)`;
 
-      // Ceviz/Fındık gibi 10g'ı 1.3 değişim eden besinlerde 10g'lık pratik porsiyon seçeneğini de en üste ekle
       if (degisimKurali && degisimKurali.ozelOnGramAciklama) {
         const opt10g = document.createElement('option');
         opt10g.value = Number((10 / refG).toFixed(4));
@@ -952,10 +945,10 @@
         const toplamBirim = Number((birimSayisi * kat).toFixed(2));
 
         if (kat === 1.0) {
-          opt.textContent = `⚖️ 1 ${terimAdi} — ${bazAciklama} (${netG}g)`;
+          opt.textContent = `⚖️ 1 ${terimAdi} - ${bazAciklama} (${netG}g)`;
           opt.selected = true;
         } else {
-          opt.textContent = `⚖️ ${kat} ${terimAdi} — ~${toplamBirim} ${birimAdi} (${netG}g)`;
+          opt.textContent = `⚖️ ${kat} ${terimAdi} - Yaklaşık ${toplamBirim} ${birimAdi} (${netG}g)`;
         }
         opt.value = realMult;
         grpDegisim.appendChild(opt);
@@ -973,7 +966,7 @@
 
         const opt = document.createElement('option');
         opt.value = realMult;
-        opt.textContent = `🔢 ${count} ${birimAdi} (${gramVal}g — ${degisimKarsiligi.toFixed(2)} ${terimAdi})`;
+        opt.textContent = `🔢 ${count} ${birimAdi} (${gramVal}g - ${degisimKarsiligi.toFixed(2)} ${terimAdi})`;
         grpAdet.appendChild(opt);
       });
       frag.appendChild(grpAdet);
@@ -1025,7 +1018,6 @@
       }
     }
 
-    // Debounce: Kullanıcı yazarken her tuşta değil, yazmayı bitirdikten 120ms sonra filtreler (Donmayı keser)
     function debouncedFilterFoodDropdown(mIdx) {
       if (searchTimers[mIdx]) clearTimeout(searchTimers[mIdx]);
       searchTimers[mIdx] = setTimeout(() => {
@@ -1057,7 +1049,8 @@
           const f = allFoods[i];
           const opt = document.createElement('option');
           opt.value = f.id;
-          opt.textContent = f._optLabel;
+          // Yalnızca saf besin adı basılır
+          opt.textContent = f.besin_adi;
           frag.appendChild(opt);
         }
         select.appendChild(frag);
@@ -1131,7 +1124,8 @@
         const f = scoredFoods[i].food;
         const opt = document.createElement('option');
         opt.value = f.id;
-        opt.textContent = f._optLabel;
+        // Yalnızca saf besin adı basılır
+        opt.textContent = f.besin_adi;
         frag.appendChild(opt);
       }
 
@@ -1172,9 +1166,9 @@
         carpim = (netMiktarG / refGram) * (yuzde / 100);
       }
 
-      // KRİTİK DÜZELTME: Öğüne eklenen her satırın değerleri tabloya basıldığı basamakla (round1 / round2) birebir aynı kaydedilir.
-      // Böylece satırları alt alta topladığında çıkan değer ile üstteki özet kart %100 aynı olur!
       const item = {
+        ogun_adi: mealName,
+        ogun_sira: mIdx,
         besin_id: food.id,
         besin_adi: food.besin_adi,
         kategori: food.kategori,
@@ -1259,6 +1253,23 @@
       container.appendChild(frag);
     }
 
+    // Tüm eklenen besinleri standart öğün sırasına (Kahvaltı -> Kuşluk -> Öğle -> İkindi -> Akşam -> Gece) göre düz liste olarak döndürür
+    function getSiraliTuketimListesi() {
+      const orderedItems = [];
+      for (let mIdx = 0; mIdx < MEALS.length; mIdx++) {
+        const mealName = MEALS[mIdx];
+        const items = tuketimListesi[mealName] || [];
+        for (let j = 0; j < items.length; j++) {
+          orderedItems.push({
+            ...items[j],
+            ogun_adi: mealName,
+            ogun_sira: mIdx
+          });
+        }
+      }
+      return orderedItems;
+    }
+
     function getHesaplananToplamlar() {
       let totals = {
         enerji_kcal: 0, protein_g: 0, yag_g: 0, doymus_yag_g: 0, tekli_doymamis_yag_g: 0, coklu_doymamis_yag_g: 0,
@@ -1269,15 +1280,14 @@
         vitamin_b6_mg: 0, vitamin_b12_mcg: 0, folat_mcg: 0
       };
 
-      MEALS.forEach(m => {
-        tuketimListesi[m].forEach(item => {
-          for (let k in totals) {
-            totals[k] += Number(item[k] || 0);
-          }
-        });
-      });
+      const orderedItems = getSiraliTuketimListesi();
+      for (let i = 0; i < orderedItems.length; i++) {
+        const item = orderedItems[i];
+        for (let k in totals) {
+          totals[k] += Number(item[k] || 0);
+        }
+      }
 
-      // Floating point (0.0000000001) sapmalarını temizle
       totals.enerji_kcal = round1(totals.enerji_kcal);
       totals.karbonhidrat_g = round1(totals.karbonhidrat_g);
       totals.protein_g = round1(totals.protein_g);
@@ -1289,6 +1299,7 @@
 
     function hesaplaVeGuncelle() {
       const totals = getHesaplananToplamlar();
+      const orderedItems = getSiraliTuketimListesi();
 
       const elKcal = document.getElementById('metricKcal');
       const elCarb = document.getElementById('metricCarb');
@@ -1352,12 +1363,20 @@
       const summaryBody = document.getElementById('addedFoodsSummaryBody');
       const summaryFoot = document.getElementById('addedFoodsSummaryFoot');
       if (summaryBody) {
-        let allItemsHtml = '';
-        MEALS.forEach(m => {
-          tuketimListesi[m].forEach(item => {
+        if (orderedItems.length === 0) {
+          summaryBody.innerHTML = `
+            <tr>
+              <td colspan="9" class="p-4 text-center text-slate-400 italic">Henüz öğünlere besin eklenmedi.</td>
+            </tr>
+          `;
+          if (summaryFoot) summaryFoot.classList.add('hidden');
+        } else {
+          let allItemsHtml = '';
+          for (let i = 0; i < orderedItems.length; i++) {
+            const item = orderedItems[i];
             allItemsHtml += `
               <tr class="hover:bg-slate-50">
-                <td class="p-2.5 font-semibold text-teal-800">${m}</td>
+                <td class="p-2.5 font-semibold text-teal-800">${item.ogun_adi}</td>
                 <td class="p-2.5 font-bold text-slate-800">${item.besin_adi}</td>
                 <td class="p-2.5 text-slate-600">${item.olcu_tanimi}</td>
                 <td class="p-2.5 text-center font-semibold text-slate-600">%${item.tuketim_yuzdesi}</td>
@@ -1368,17 +1387,7 @@
                 <td class="p-2.5 text-right font-mono text-emerald-700">${item.lif_g.toFixed(1)}</td>
               </tr>
             `;
-          });
-        });
-
-        if (!allItemsHtml) {
-          summaryBody.innerHTML = `
-            <tr>
-              <td colspan="9" class="p-4 text-center text-slate-400 italic">Henüz öğünlere besin eklenmedi.</td>
-            </tr>
-          `;
-          if (summaryFoot) summaryFoot.classList.add('hidden');
-        } else {
+          }
           summaryBody.innerHTML = allItemsHtml;
           if (summaryFoot) {
             summaryFoot.classList.remove('hidden');
@@ -1473,9 +1482,21 @@
       }
     }
 
-    function fixPdfText(text) {
+    // PDF TABLO KAYMASINI ÖNLEYEN TEMİZLEYİCİ:
+    // Emoji, bozuk tire (—), tilde (~) ve satır içi yeni satır (\n) karakterlerini temizler.
+    // Böylece jsPDF-AutoTable her besini kesin olarak tek ve bağımsız bir satıra basar, satırlar üst üste binmez.
+    function cleanPdfCell(text) {
       if (text === null || text === undefined) return "";
-      return String(text).replace(/İ/g, "I");
+      return String(text)
+        .replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE00}-\u{FE0F}]/gu, "")
+        .replace(/[⚖️🏥🍽️🔢🥄🥣📐🌰🔽📋📊🎯🔬📄📁]/g, "")
+        .replace(/[—–]/g, "-")
+        .replace(/~/g, "Yaklasik ")
+        .replace(/≈/g, "")
+        .replace(/[\r\n]+/g, " ")
+        .replace(/\s+/g, " ")
+        .replace(/İ/g, "I")
+        .trim();
     }
 
     async function olusturVeIndirPDF() {
@@ -1503,22 +1524,24 @@
         const hPro = Number(document.getElementById('hedefProtein')?.value) || 0;
 
         const totals = getHesaplananToplamlar();
+        // Besinler hangi sırayla eklenmiş olursa olsun standart öğün sırasına göre (Kahvaltı -> Gece) çekilir
+        const orderedItems = getSiraliTuketimListesi();
         const mealItemsRows = [];
 
-        MEALS.forEach(m => {
-          tuketimListesi[m].forEach(item => {
-            mealItemsRows.push([
-              fixPdfText(m),
-              fixPdfText(item.besin_adi),
-              fixPdfText(item.olcu_tanimi),
-              `%${item.tuketim_yuzdesi}`,
-              item.enerji_kcal.toFixed(1),
-              item.karbonhidrat_g.toFixed(1),
-              item.protein_g.toFixed(1),
-              item.yag_g.toFixed(1)
-            ]);
-          });
-        });
+        // Her bir besin kaydı kesin olarak bağımsız bir satır dizisi (Array) olarak oluşturulur
+        for (let i = 0; i < orderedItems.length; i++) {
+          const item = orderedItems[i];
+          mealItemsRows.push([
+            cleanPdfCell(item.ogun_adi),
+            cleanPdfCell(item.besin_adi),
+            cleanPdfCell(item.olcu_tanimi),
+            `%${item.tuketim_yuzdesi}`,
+            String(item.enerji_kcal.toFixed(1)),
+            String(item.karbonhidrat_g.toFixed(1)),
+            String(item.protein_g.toFixed(1)),
+            String(item.yag_g.toFixed(1))
+          ]);
+        }
 
         const kcal = totals.enerji_kcal;
         const pctCarb = kcal > 0 ? (totals.karbonhidrat_g * 4 / kcal * 100).toFixed(1) : "0.0";
@@ -1531,10 +1554,10 @@
         doc.setTextColor(255, 255, 255);
         if (fontBase64) doc.setFont("Roboto");
         doc.setFontSize(12.5);
-        doc.text(fixPdfText("emreyle diyet - BESİN VE KALORİ TAKİP RAPORU"), 14, 11);
+        doc.text(cleanPdfCell("emreyle diyet - BESİN VE KALORİ TAKİP RAPORU"), 14, 11);
         
         doc.setFontSize(8.5);
-        doc.text(fixPdfText("Besin Tüketim Kaydı ve Detaylı Nütrisyonel Analiz | @emreyle.diyet"), 14, 17);
+        doc.text(cleanPdfCell("Besin Tüketim Kaydı ve Detaylı Nütrisyonel Analiz | @emreyle.diyet"), 14, 17);
 
         const now = new Date();
         const tarihStr = `${now.getDate().toString().padStart(2, '0')}.${(now.getMonth()+1).toString().padStart(2, '0')}.${now.getFullYear()} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
@@ -1545,18 +1568,18 @@
         doc.autoTable({
           startY: 28,
           theme: "plain",
-          styles: { font: fontToUse, fontSize: 9, cellPadding: 1.6, textColor: [30, 41, 59] },
-          columnStyles: { 0: { fontStyle: "normal", width: 38 }, 1: { width: 67 }, 2: { fontStyle: "normal", width: 40 }, 3: { width: 45 } },
+          styles: { font: fontToUse, fontSize: 9, cellPadding: 1.6, textColor: [30, 41, 59], overflow: "linebreak" },
+          columnStyles: { 0: { fontStyle: "normal", cellWidth: 38 }, 1: { cellWidth: 62 }, 2: { fontStyle: "normal", cellWidth: 40 }, 3: { cellWidth: 42 } },
           body: [
-            [fixPdfText("İsim / Kayıt No:"), fixPdfText(hasta), fixPdfText("Grup / Kategori:"), fixPdfText(servis)],
-            [fixPdfText("Enerji Hedefi:"), `${hKcal} kcal`, fixPdfText("Protein Hedefi:"), `${hPro} g`],
-            [fixPdfText("Enerji Karşılama:"), hKcal > 0 ? `%${((kcal / hKcal) * 100).toFixed(1)}` : fixPdfText("Tanımlanmadı"), fixPdfText("Protein Karşılama:"), hPro > 0 ? `%${((totals.protein_g / hPro) * 100).toFixed(1)}` : fixPdfText("Tanımlanmadı")]
+            [cleanPdfCell("İsim / Kayıt No:"), cleanPdfCell(hasta), cleanPdfCell("Grup / Kategori:"), cleanPdfCell(servis)],
+            [cleanPdfCell("Enerji Hedefi:"), `${hKcal} kcal`, cleanPdfCell("Protein Hedefi:"), `${hPro} g`],
+            [cleanPdfCell("Enerji Karşılama:"), hKcal > 0 ? `%${((kcal / hKcal) * 100).toFixed(1)}` : cleanPdfCell("Tanımlanmadı"), cleanPdfCell("Protein Karşılama:"), hPro > 0 ? `%${((totals.protein_g / hPro) * 100).toFixed(1)}` : cleanPdfCell("Tanımlanmadı")]
           ]
         });
 
         doc.autoTable({
           startY: doc.lastAutoTable.finalY + 3,
-          head: [[fixPdfText("Toplam Enerji"), fixPdfText("Karbonhidrat (CHO)"), fixPdfText("Protein"), fixPdfText("Yağ"), fixPdfText("Lif (Posa)")]],
+          head: [[cleanPdfCell("Toplam Enerji"), cleanPdfCell("Karbonhidrat (CHO)"), cleanPdfCell("Protein"), cleanPdfCell("Yağ"), cleanPdfCell("Lif (Posa)")]],
           body: [[
             `${kcal.toFixed(1)} kcal`,
             `${totals.karbonhidrat_g.toFixed(1)} g (%${pctCarb})`,
@@ -1565,43 +1588,77 @@
             `${totals.lif_g.toFixed(1)} g`
           ]],
           theme: "grid",
-          styles: { font: fontToUse },
+          styles: { font: fontToUse, overflow: "linebreak" },
           headStyles: { font: fontToUse, fillColor: [13, 148, 136], textColor: [255, 255, 255], halign: "center", fontSize: 8.5 },
           bodyStyles: { font: fontToUse, halign: "center", fontSize: 8.5, textColor: [15, 23, 42] }
         });
 
         doc.setFontSize(9.5);
         doc.setTextColor(30, 41, 59);
-        doc.text(fixPdfText("Öğün Bazlı Tüketilen Besinler Listesi"), 14, doc.lastAutoTable.finalY + 6.5);
+        doc.text(cleanPdfCell("Öğün Bazlı Tüketilen Besinler Listesi"), 14, doc.lastAutoTable.finalY + 6.5);
         
         if (mealItemsRows.length === 0) {
-          mealItemsRows.push(["-", fixPdfText("Henüz besin girilmedi"), "-", "-", "0.0", "0.0", "0.0", "0.0"]);
+          mealItemsRows.push(["-", cleanPdfCell("Henüz besin girilmedi"), "-", "-", "0.0", "0.0", "0.0", "0.0"]);
         } else {
           mealItemsRows.push([
             "",
             "",
-            fixPdfText("TOPLAM:"),
+            cleanPdfCell("TOPLAM:"),
             "",
-            totals.enerji_kcal.toFixed(1),
-            totals.karbonhidrat_g.toFixed(1),
-            totals.protein_g.toFixed(1),
-            totals.yag_g.toFixed(1)
+            String(totals.enerji_kcal.toFixed(1)),
+            String(totals.karbonhidrat_g.toFixed(1)),
+            String(totals.protein_g.toFixed(1)),
+            String(totals.yag_g.toFixed(1))
           ]);
         }
 
+        // Sabit sütun genişlikleri (Toplam 182mm = A4 genişliği 210mm - 28mm kenar boşluğu) ile satır kayması %100 engellenir
         doc.autoTable({
           startY: doc.lastAutoTable.finalY + 8.5,
-          head: [[fixPdfText("Öğün"), fixPdfText("Besin / Ürün Adı"), fixPdfText("Değişim / Porsiyon"), fixPdfText("Tüketim %"), fixPdfText("Enerji (kcal)"), fixPdfText("Karb (g)"), fixPdfText("Protein (g)"), fixPdfText("Yağ (g)")]],
+          head: [[
+            cleanPdfCell("Öğün"),
+            cleanPdfCell("Besin / Ürün Adı"),
+            cleanPdfCell("Değişim / Porsiyon"),
+            cleanPdfCell("Tüketim"),
+            cleanPdfCell("Kalori"),
+            cleanPdfCell("Karb (g)"),
+            cleanPdfCell("Pro (g)"),
+            cleanPdfCell("Yağ (g)")
+          ]],
           body: mealItemsRows,
-          theme: "striped",
-          styles: { font: fontToUse, fontSize: 8, cellPadding: 1.5 },
-          headStyles: { font: fontToUse, fillColor: [51, 65, 85], textColor: [255, 255, 255], fontSize: 8 },
-          columnStyles: { 4: { halign: "right" }, 5: { halign: "right" }, 6: { halign: "right" }, 7: { halign: "right" } }
+          theme: "grid",
+          rowPageBreak: "avoid",
+          styles: {
+            font: fontToUse,
+            fontSize: 7.5,
+            cellPadding: 1.8,
+            overflow: "linebreak",
+            valign: "middle",
+            lineColor: [203, 213, 225],
+            lineWidth: 0.1
+          },
+          headStyles: {
+            font: fontToUse,
+            fillColor: [51, 65, 85],
+            textColor: [255, 255, 255],
+            fontSize: 7.5,
+            valign: "middle"
+          },
+          columnStyles: {
+            0: { cellWidth: 22 },
+            1: { cellWidth: 42 },
+            2: { cellWidth: 48 },
+            3: { cellWidth: 14, halign: "center" },
+            4: { cellWidth: 16, halign: "right" },
+            5: { cellWidth: 14, halign: "right" },
+            6: { cellWidth: 13, halign: "right" },
+            7: { cellWidth: 13, halign: "right" }
+          }
         });
 
         doc.setFontSize(9.5);
         doc.setTextColor(30, 41, 59);
-        doc.text(fixPdfText("Alınan Tüm Mikro Besin Öğeleri ve Mineraller"), 14, doc.lastAutoTable.finalY + 6.5);
+        doc.text(cleanPdfCell("Alınan Tüm Mikro Besin Öğeleri ve Mineraller"), 14, doc.lastAutoTable.finalY + 6.5);
 
         const rawMicroData = [
           ["Doymuş Yağ", `${totals.doymus_yag_g.toFixed(2)} g`, "Vitamin A", `${totals.vitamin_a_mcg.toFixed(1)} mcg`],
@@ -1617,14 +1674,15 @@
           ["Demir (Fe)", `${totals.demir_mg.toFixed(2)} mg`, "Lif (Posa Toplamı)", `${totals.lif_g.toFixed(1)} g`]
         ];
 
-        const microData = rawMicroData.map(r => [fixPdfText(r[0]), r[1], fixPdfText(r[2]), r[3]]);
+        const microData = rawMicroData.map(r => [cleanPdfCell(r[0]), r[1], cleanPdfCell(r[2]), r[3]]);
 
         doc.autoTable({
           startY: doc.lastAutoTable.finalY + 8.5,
-          head: [[fixPdfText("Besin Öğesi"), fixPdfText("Alınan Miktar"), fixPdfText("Besin Öğesi"), fixPdfText("Alınan Miktar")]],
+          head: [[cleanPdfCell("Besin Öğesi"), cleanPdfCell("Alınan Miktar"), cleanPdfCell("Besin Öğesi"), cleanPdfCell("Alınan Miktar")]],
           body: microData,
           theme: "grid",
-          styles: { font: fontToUse, fontSize: 8, cellPadding: 1.5 },
+          rowPageBreak: "avoid",
+          styles: { font: fontToUse, fontSize: 8, cellPadding: 1.5, overflow: "linebreak" },
           headStyles: { font: fontToUse, fillColor: [15, 118, 110], textColor: [255, 255, 255], fontSize: 8 },
           columnStyles: { 1: { halign: "right" }, 3: { halign: "right" } }
         });
@@ -1632,8 +1690,8 @@
         const pageHeight = doc.internal.pageSize.height;
         doc.setFontSize(8);
         doc.setTextColor(100, 116, 139);
-        doc.text(fixPdfText("Geliştiren: Yunus Emre Çifçi - Beslenme ve Diyetetik"), 14, pageHeight - 8);
-        doc.text(fixPdfText("Instagram: @emreyle.diyet"), 196, pageHeight - 8, { align: "right" });
+        doc.text(cleanPdfCell("Geliştiren: Yunus Emre Çifçi - Beslenme ve Diyetetik"), 14, pageHeight - 8);
+        doc.text(cleanPdfCell("Instagram: @emreyle.diyet"), 196, pageHeight - 8, { align: "right" });
 
         const dosyaAdi = `${hasta.replace(/[^a-zA-Z0-9_\-üğşıöçÜĞŞİÖÇ]/g, "_")}_Besin_Tuketim_Raporu.pdf`;
         doc.save(dosyaAdi);
@@ -1652,6 +1710,7 @@
       const hKcal = Number(document.getElementById('hedefKcal')?.value) || 0;
       const hPro = Number(document.getElementById('hedefProtein')?.value) || 0;
       const totals = getHesaplananToplamlar();
+      const orderedItems = getSiraliTuketimListesi();
 
       const wb = XLSX.utils.book_new();
 
@@ -1695,21 +1754,20 @@
         ["Öğün", "Besin Adı", "Ölçü / Değişim / Porsiyon", "Tüketim %", "Enerji (kcal)", "Karb (g)", "Protein (g)", "Yağ (g)", "Lif (g)"]
       ];
 
-      MEALS.forEach(m => {
-        tuketimListesi[m].forEach(item => {
-          besinData.push([
-            m,
-            item.besin_adi,
-            item.olcu_tanimi,
-            item.tuketim_yuzdesi,
-            Number(item.enerji_kcal.toFixed(1)),
-            Number(item.karbonhidrat_g.toFixed(1)),
-            Number(item.protein_g.toFixed(1)),
-            Number(item.yag_g.toFixed(1)),
-            Number(item.lif_g.toFixed(1))
-          ]);
-        });
-      });
+      for (let i = 0; i < orderedItems.length; i++) {
+        const item = orderedItems[i];
+        besinData.push([
+          item.ogun_adi,
+          item.besin_adi,
+          item.olcu_tanimi,
+          item.tuketim_yuzdesi,
+          Number(item.enerji_kcal.toFixed(1)),
+          Number(item.karbonhidrat_g.toFixed(1)),
+          Number(item.protein_g.toFixed(1)),
+          Number(item.yag_g.toFixed(1)),
+          Number(item.lif_g.toFixed(1))
+        ]);
+      }
 
       besinData.push([
         "TOPLAM", "", "", "",
