@@ -179,7 +179,7 @@
                 <tr>
                   <th class="p-2.5">Öğün</th>
                   <th class="p-2.5">Besin / Ürün Adı</th>
-                  <th class="p-2.5">Ölçü / Değişim</th>
+                  <th class="p-2.5">Ölçü / Değişim / Porsiyon</th>
                   <th class="p-2.5 text-center">Tüketim %</th>
                   <th class="p-2.5 text-right">Kalori (kcal)</th>
                   <th class="p-2.5 text-right">Karb (g)</th>
@@ -327,7 +327,6 @@
     }
 
     async function init() {
-      // Önce öğün arayüzünü oluştur ki JSON yüklenirken bile kutular hemen görünsün
       renderMealsUI();
       hesaplaVeGuncelle();
 
@@ -408,13 +407,13 @@
           <div id="acc_${mIdx}" class="p-4 space-y-4 bg-white border-t border-slate-200">
             <div class="grid grid-cols-1 lg:grid-cols-12 gap-3 items-end bg-slate-50 p-3.5 rounded-xl border border-slate-200">
               <div class="lg:col-span-5 space-y-1">
-                <label class="text-xs font-bold text-slate-600 flex justify-between items-center">
-                  <span>Besin / Enteral Ürün Seçiniz</span>
-                  <span id="porsiyon_tanim_${mIdx}" class="text-[11px] text-teal-700 font-bold truncate max-w-[200px]">1 Değişim / Porsiyon</span>
+                <label class="text-xs font-bold text-slate-600 flex justify-between items-center gap-1">
+                  <span>Besin / Yemek / Ürün Seçiniz</span>
+                  <span id="porsiyon_tanim_${mIdx}" class="text-[11px] text-teal-700 font-bold truncate max-w-[260px]">1 Değişim / Porsiyon</span>
                 </label>
                 <div class="relative">
                   <i class="fa-solid fa-magnifying-glass absolute left-2.5 top-2.5 text-slate-400 text-xs"></i>
-                  <input type="text" id="food_search_${mIdx}" placeholder="Yazmaya başlayın (Örn: yoğurt, galeta, pilav)..." 
+                  <input type="text" id="food_search_${mIdx}" placeholder="Yazmaya başlayın (Örn: zeytin, mandalina, pilav, yoğurt)..." 
                          oninput="filterFoodDropdown(${mIdx})" 
                          class="w-full pl-7 pr-3 py-1.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-1 focus:ring-teal-600 mb-1">
                 </div>
@@ -424,15 +423,15 @@
 
               <div class="lg:col-span-3 space-y-1">
                 <div class="flex justify-between items-center">
-                  <label class="text-xs font-bold text-slate-600">Ölçü Birimi / Adet</label>
+                  <label class="text-xs font-bold text-slate-600">Ölçü / Değişim / Porsiyon (g)</label>
                   <button type="button" onclick="toggleInputMode(${mIdx})" id="mode_toggle_${mIdx}" class="text-[10px] text-teal-700 font-bold underline hover:text-teal-900">
-                    Net Grama Geç
+                    Manuel Grama Geç
                   </button>
                 </div>
 
                 <div id="box_porsiyon_${mIdx}" class="flex items-center space-x-1.5">
                   <select id="food_portion_${mIdx}" class="w-full px-2.5 py-2 text-xs rounded-lg border border-teal-300 bg-teal-50/50 font-bold text-teal-900 focus:ring-2 focus:ring-teal-600">
-                    <option value="1" selected>1 Porsiyon / Değişim (Standart)</option>
+                    <option value="1" selected>1 Porsiyon / Değişim (100g)</option>
                   </select>
                 </div>
 
@@ -489,28 +488,197 @@
       if (newMode === 'gram') {
         if (pBox) pBox.classList.add('hidden');
         if (gBox) gBox.classList.remove('hidden');
-        if (btn) btn.textContent = "Porsiyona Geç";
+        if (btn) btn.textContent = "Değişim/Porsiyona Geç";
       } else {
         if (gBox) gBox.classList.add('hidden');
         if (pBox) pBox.classList.remove('hidden');
-        if (btn) btn.textContent = "Net Grama Geç";
+        if (btn) btn.textContent = "Manuel Grama Geç";
       }
     }
 
+    // ============================================================================
+    // AKILLI DİYETİSYEN DEĞİŞİM & PORSİYON MOTORU (TÜBER & STANDART DEĞİŞİM)
+    // ============================================================================
+    const DIYETISYEN_DEGISIM_KURALLARI = [
+      // 1. YAĞ VE ZEYTİN GRUBU (1 Değişim = 45 kcal / 5g Yağ)
+      { keys: ["zeytin", "siyah zeytin", "yesil zeytin", "sele zeytin", "kalamata"], Exclude: ["yagi", "ezmesi", "salata", "pogaca", "acma", "ekmek"], degisimAciklama: "10 Adet Orta Boy Zeytin", birimAdet: 10, birimIsim: "Adet Zeytin", netGram: 30 },
+      { keys: ["zeytin ezmesi"], Exclude: [], degisimAciklama: "1 Tatlı Kaşığı Zeytin Ezmesi", birimAdet: 1, birimIsim: "Tatlı Kaşığı", netGram: 10 },
+      { keys: ["ceviz", "ceviz ici"], Exclude: ["tatli", "baklava", "sucuk", "ezme", "eriste", "salata", "ekmek", "kek"], degisimAciklama: "2 Tam Adet Ceviz İçi", birimAdet: 2, birimIsim: "Tam Ceviz İçi", netGram: 10 },
+      { keys: ["findik", "cig findik", "kavrulmus findik"], Exclude: ["ezme", "lahmacun", "sut", "krema", "un"], degisimAciklama: "8-10 Adet Fındık", birimAdet: 10, birimIsim: "Adet Fındık", netGram: 10 },
+      { keys: ["badem", "cig badem", "kavrulmus badem"], Exclude: ["sut", "ezme", "un", "sekeri", "tatli"], degisimAciklama: "8-10 Adet Badem", birimAdet: 10, birimIsim: "Adet Badem", netGram: 10 },
+      { keys: ["kaju"], Exclude: [], degisimAciklama: "6-8 Adet Kaju", birimAdet: 7, birimIsim: "Adet Kaju", netGram: 10 },
+      { keys: ["antep fistigi", "siirt fistigi"], Exclude: ["baklava", "ezme", "sarma", "katmer", "helva", "cikolata"], degisimAciklama: "10-12 Adet Antep Fıstığı", birimAdet: 12, birimIsim: "Adet Antep Fıstığı", netGram: 10 },
+      { keys: ["yer fistigi", "tuzlu fistik"], Exclude: ["ezme", "krokan"], degisimAciklama: "10-12 Adet Yer Fıstığı", birimAdet: 12, birimIsim: "Adet Yer Fıstığı", netGram: 10 },
+      { keys: ["fistik ezmesi", "yer fistigi ezmesi", "findik ezmesi", "badem ezmesi"], Exclude: ["tatli"], degisimAciklama: "1 Tatlı Kaşığı Ezme", birimAdet: 1, birimIsim: "Tatlı Kaşığı", netGram: 10 },
+      { keys: ["ay cekirdegi", "kabak cekirdegi"], Exclude: ["ekmek"], degisimAciklama: "1 Avuç İç (Ayıklanmış)", birimAdet: 2, birimIsim: "Yemek Kaşığı", netGram: 10 },
+      { keys: ["avokado"], Exclude: ["salata", "sos", "puding"], degisimAciklama: "Çeyrek Orta Boy Avokado (1/4)", birimAdet: 0.25, birimIsim: "Bütün Avokado", netGram: 35 },
+      { keys: ["tahin"], Exclude: ["helva", "piyaz", "pekmez", "humus", "pide", "corek"], degisimAciklama: "1 Yemek Kaşığı Tahin", birimAdet: 2, birimIsim: "Tatlı Kaşığı", netGram: 10 },
+      { keys: ["zeytinyagi", "aycicek yagi", "misir ozu", "findik yagi", "kanola yagi", "sivi yag", "hindistan cevizi yagi"], Exclude: ["zeytinyagli", "ton baligi"], degisimAciklama: "1 Tatlı Kaşığı Sıvı Yağ", birimAdet: 1, birimIsim: "Tatlı Kaşığı", netGram: 5 },
+      { keys: ["tereyagi", "sade yag", "margarin"], Exclude: ["pilav", "iskender", "karides", "kurabiye"], degisimAciklama: "1 Tatlı Kaşığı Tereyağı", birimAdet: 1, birimIsim: "Tatlı Kaşığı", netGram: 5 },
+      { keys: ["kaymak", "sut kaymagi", "manda kaymagi"], Exclude: ["tatli"], degisimAciklama: "1 Tatlı Kaşığı Kaymak", birimAdet: 1, birimIsim: "Tatlı Kaşığı", netGram: 10 },
+      { keys: ["mayonez"], Exclude: ["salata"], degisimAciklama: "1 Tatlı Kaşığı Mayonez", birimAdet: 1, birimIsim: "Tatlı Kaşığı", netGram: 8 },
+
+      // 2. MEYVE GRUBU (1 Değişim = 60 kcal / 15g Karbonhidrat)
+      { keys: ["mandalina"], Exclude: ["suyu", "recel", "pelte"], degisimAciklama: "2 Küçük/Orta Boy Mandalina", birimAdet: 2, birimIsim: "Adet Mandalina", netGram: 150 },
+      { keys: ["elma", "amasya elmasi", "yesil elma", "kirmizi elma", "starking elma"], Exclude: ["dilim", "sirke", "suyu", "cay", "tatli", "yer elmasi", "kurusu", "cips", "turta", "kurabiye"], degisimAciklama: "1 Küçük/Orta Boy Elma", birimAdet: 1, birimIsim: "Orta Boy Elma", netGram: 120 },
+      { keys: ["elma kurusu", "kuru elma"], Exclude: [], degisimAciklama: "1 Avuç (5-6 Dilim) Kuru Elma", birimAdet: 6, birimIsim: "Dilim Kuru Elma", netGram: 25 },
+      { keys: ["portakal"], Exclude: ["suyu", "kereviz", "recel", "kabugu", "ordek"], degisimAciklama: "1 Orta Boy Portakal", birimAdet: 1, birimIsim: "Orta Boy Portakal", netGram: 130 },
+      { keys: ["greyfurt"], Exclude: ["suyu"], degisimAciklama: "Yarım Büyük Boy Greyfurt", birimAdet: 0.5, birimIsim: "Bütün Greyfurt", netGram: 150 },
+      { keys: ["muz", "yerli muz", "ithal muz"], Exclude: ["sut", "tatli", "puding", "magnolya", "pankek", "ekmek", "cips"], degisimAciklama: "Yarım Orta Boy (veya 1 Küçük Muz)", birimAdet: 0.5, birimIsim: "Orta Boy Muz", netGram: 75 },
+      { keys: ["kivi"], Exclude: [], degisimAciklama: "1 Büyük / 2 Küçük Boy Kivi", birimAdet: 1, birimIsim: "Orta/Büyük Kivi", netGram: 120 },
+      { keys: ["armut", "deveci armudu", "santa maria armut"], Exclude: ["tatli"], degisimAciklama: "1 Küçük/Orta Boy Armut", birimAdet: 1, birimIsim: "Orta Boy Armut", netGram: 120 },
+      { keys: ["seftali", "nektarin"], Exclude: ["suyu", "komposto", "recel", "kebap"], degisimAciklama: "1 Orta Boy Şeftali/Nektarin", birimAdet: 1, birimIsim: "Orta Boy", netGram: 130 },
+      { keys: ["kayisi", "taze kayisi", "igdirdir kayisisi", "malatya kayisisi"], Exclude: ["kuru", "komposto", "recel", "hosaf", "yahni"], degisimAciklama: "3-4 Adet Taze Kayısı", birimAdet: 4, birimIsim: "Adet Taze Kayısı", netGram: 120 },
+      { keys: ["kuru kayisi", "gun kurusu"], Exclude: ["komposto", "hosaf", "tatli"], degisimAciklama: "3-4 Adet Kuru Kayısı", birimAdet: 4, birimIsim: "Adet Kuru Kayısı", netGram: 25 },
+      { keys: ["kuru erik", "murdum kurusu"], Exclude: ["komposto", "hosaf"], degisimAciklama: "3-4 Adet Kuru Erik", birimAdet: 4, birimIsim: "Adet Kuru Erik", netGram: 25 },
+      { keys: ["kuru incir"], Exclude: ["tatli", "uyutma", "recel"], degisimAciklama: "1 Adet Kuru İncir", birimAdet: 1, birimIsim: "Adet Kuru İncir", netGram: 20 },
+      { keys: ["taze incir", "incir", "bardacik incir", "bursa siyah incir"], Exclude: ["kuru", "tatli", "recel", "uyutma"], degisimAciklama: "2 Küçük / 1 Büyük Taze İncir", birimAdet: 2, birimIsim: "Adet Taze İncir", netGram: 80 },
+      { keys: ["hurma", "medine hurmasi", "kudus hurmasi", "iran hurmasi"], Exclude: ["trabzon", "cennet", "tatli", "bar"], degisimAciklama: "2-3 Adet Hurma", birimAdet: 3, birimIsim: "Adet Hurma", netGram: 25 },
+      { keys: ["trabzon hurmasi", "cennet hurmasi"], Exclude: ["kuru"], degisimAciklama: "1 Küçük Boy Cennet Hurması", birimAdet: 1, birimIsim: "Adet Cennet Hurması", netGram: 80 },
+      { keys: ["cilek"], Exclude: ["recel", "milkshake", "pasta", "puding", "suyu", "tart"], degisimAciklama: "10-12 Adet Çilek (1 Kase)", birimAdet: 12, birimIsim: "Adet Çilek", netGram: 175 },
+      { keys: ["kiraz", "visne"], Exclude: ["suyu", "recel", "komposto", "hosaf", "yapragi", "kebap", "tayfuru"], degisimAciklama: "12-15 Adet Kiraz/Vişne", birimAdet: 14, birimIsim: "Adet Kiraz/Vişne", netGram: 85 },
+      { keys: ["yesil erik", "can erigi", "papaz erigi"], Exclude: ["kuru", "eksi"], degisimAciklama: "10-12 Adet Yeşil Erik", birimAdet: 10, birimIsim: "Adet Yeşil Erik", netGram: 150 },
+      { keys: ["murdum erigi", "kirmizi erik", "anjelik erik"], Exclude: ["kuru", "komposto"], degisimAciklama: "3-4 Adet Mürdüm/Kırmızı Erik", birimAdet: 4, birimIsim: "Adet Erik", netGram: 120 },
+      { keys: ["uzum", "yas uzum", "cekirdeksiz uzum", "siyah uzum"], Exclude: ["kuru", "kus uzumu", "pekmez", "sirke", "suyu", "hosaf", "sira"], degisimAciklama: "15 İri Tane Üzüm (1 Küçük Salkım)", birimAdet: 15, birimIsim: "Tane Üzüm", netGram: 85 },
+      { keys: ["kuru uzum", "siyah kuru uzum"], Exclude: ["kek", "komposto", "hosaf", "kurabiye"], degisimAciklama: "1 Yemek Kaşığı Kuru Üzüm", birimAdet: 1, birimIsim: "Yemek Kaşığı", netGram: 20 },
+      { keys: ["karpuz"], Exclude: ["cekirdek", "recel"], degisimAciklama: "1 İnce Üçgen Dilim Karpuz", birimAdet: 1, birimIsim: "İnce Dilim Karpuz", netGram: 200 },
+      { keys: ["kavun", "kirsehir kavunu"], Exclude: ["cekirdek", "dolma"], degisimAciklama: "1 İnce Dilim Kavun", birimAdet: 1, birimIsim: "İnce Dilim Kavun", netGram: 180 },
+      { keys: ["yenidunya", "malta erigi"], Exclude: ["kebap"], degisimAciklama: "5-6 Adet Yenidünya", birimAdet: 6, birimIsim: "Adet Yenidünya", netGram: 130 },
+      { keys: ["ayva"], Exclude: ["tatli", "recel", "kereviz", "komposto"], degisimAciklama: "1/3 Orta Boy Ayva", birimAdet: 1, birimIsim: "Dilim (1/3 Boy) Ayva", netGram: 80 },
+      { keys: ["nar"], Exclude: ["eksisi", "suyu"], degisimAciklama: "Yarım Küçük Boy Nar (1 Küçük Kase)", birimAdet: 1, birimIsim: "Küçük Kase Nar", netGram: 100 },
+      { keys: ["ananas"], Exclude: ["suyu", "konserve"], degisimAciklama: "1 Parmak Kalınlığında Halka Dilim", birimAdet: 1, birimIsim: "Halka Dilim Ananas", netGram: 120 },
+      { keys: ["dut", "beyaz dut", "karadut"], Exclude: ["kuru", "pekmez", "recel", "suyu"], degisimAciklama: "1 Çay Bardağı Taze Dut", birimAdet: 1, birimIsim: "Çay Bardağı", netGram: 100 },
+      { keys: ["kuru dut"], Exclude: [], degisimAciklama: "1,5 Yemek Kaşığı Kuru Dut", birimAdet: 1.5, birimIsim: "Yemek Kaşığı", netGram: 20 },
+      { keys: ["yaban mersini", "bogurtlen", "ahududu", "frambuaz"], Exclude: ["recel", "pasta", "cheesecake"], degisimAciklama: "1 Çay Bardağı / Küçük Kase", birimAdet: 1, birimIsim: "Çay Bardağı", netGram: 120 },
+
+      // 3. EKMEK VE TAHIL DEĞİŞİMLERİ (1 Değişim = 68 kcal / 15g Karbonhidrat, 2g Protein)
+      { keys: ["beyaz ekmek", "tam bugday ekmegi", "cavdar ekmegi", "kepekli ekmek", "ekmek", "tost ekmegi", "tambugday", "eksi mayali ekmek", "cok tahilli ekmek", "karabugday ekmegi", "siyez ekmegi", "misir ekmegi", "bazlama", "lavas", "roll ekmek", "baget ekmek"], Exclude: ["arasi", "kadayif", "dolma", "kofte", "papara", "kizartma", "soba", "konya", "yumurtali"], degisimAciklama: "1 İnce Dilim Ekmek", birimAdet: 1, birimIsim: "İnce Dilim Ekmek", netGram: 25 },
+      { keys: ["simit", "sokak simidi", "ankara simidi", "gevrek"], Exclude: ["kandil", "tirnak"], degisimAciklama: "Çeyrek Simit (1/4 Adet = 1 Ekmek Değişimi)", birimAdet: 0.25, birimIsim: "Tam Simit", netGram: 25 },
+      { keys: ["galeta", "grissini", "kepekli galeta", "tam bugday galeta"], Exclude: ["unlu", "snitzel"], degisimAciklama: "2-3 Adet Galeta / Grissini", birimAdet: 3, birimIsim: "Adet Galeta", netGram: 20 },
+      { keys: ["wasa", "gevrek ekmek", "etimek", "peksimet"], Exclude: ["tatli"], degisimAciklama: "2 Adet / Dilim", birimAdet: 2, birimIsim: "Dilim/Adet", netGram: 20 },
+      { keys: ["pirinc patlagi", "karabugday patlagi", "misir patlagi"], Exclude: ["cikolatali"], degisimAciklama: "2-3 Adet Patlak", birimAdet: 2.5, birimIsim: "Adet", netGram: 20 },
+      { keys: ["patlamis misir"], Exclude: ["karamelli"], degisimAciklama: "1 Su Bardağı Patlamış Mısır", birimAdet: 1, birimIsim: "Su Bardağı", netGram: 20 },
+      { keys: ["haslanmis misir", "sut misir"], Exclude: ["corba", "salata"], degisimAciklama: "Yarım Orta Boy Koçan (veya 2 Yemek Kaşığı)", birimAdet: 2, birimIsim: "Yemek Kaşığı", netGram: 60 },
+      { keys: ["kestane", "kebap kestane", "haslama kestane"], Exclude: ["corba", "hindi", "sekeri", "pilav", "pasta"], degisimAciklama: "2-3 Orta Boy Kestane", birimAdet: 3, birimIsim: "Adet Kestane", netGram: 30 },
+      { keys: ["yulaf ezmesi", "yulaf kepegi"], Exclude: ["pankek", "kurabiye", "bar", "lapa", "porridge"], degisimAciklama: "2 Yemek Kaşığı Yulaf Ezmesi", birimAdet: 2, birimIsim: "Yemek Kaşığı", netGram: 20 },
+      { keys: ["granola", "musli", "misir gevregi", "cornflakes"], Exclude: ["bar"], degisimAciklama: "2-3 Yemek Kaşığı", birimAdet: 2.5, birimIsim: "Yemek Kaşığı", netGram: 20 },
+      { keys: ["leblebi", "sari leblebi", "beyaz leblebi"], Exclude: ["tozu", "sekerli"], degisimAciklama: "1 Çay Bardağı (1 Avuç) Leblebi", birimAdet: 1, birimIsim: "Çay Bardağı", netGram: 20 },
+      { keys: ["haslanmis patates", "kumpirlik patates"], Exclude: ["salata", "pure", "kizartma", "oturtma", "musakka", "yemegi", "dolma", "borek", "pide", "gozleme"], degisimAciklama: "1 Küçük Boy Haşlanmış Patates", birimAdet: 1, birimIsim: "Küçük Boy Patates", netGram: 90 },
+
+      // 4. SÜT, YOĞURT, AYRAN, KEFİR DEĞİŞİMLERİ (1 Değişim = 114 kcal Tam Yağlı / 85 kcal Yarım Yağlı)
+      { keys: ["inek sutu", "tam yagli sut", "yarim yagli sut", "light sut", "laktozsuz sut", "keci sutu", "manda sutu", "pastorize sut", "gunluk sut"], Exclude: ["tatli", "sutlac", "corba", "kahve", "tozu", "recel", "misir"], degisimAciklama: "1 Su Bardağı Süt (200 ml)", birimAdet: 1, birimIsim: "Su Bardağı", netGram: 200 },
+      { keys: ["yogurt", "ev yogurdu", "tam yagli yogurt", "yarim yagli yogurt", "light yogurt", "laktozsuz yogurt", "koy yogurdu", "manda yogurdu", "tava yogurdu"], Exclude: ["corba", "tatli", "sos", "meze", "suzme", "meyveli", "bakla", "kabak", "ispanak", "semizotu", "biber", "patlican", "manti", "kebap"], degisimAciklama: "1 Kase / 4 Yemek Kaşığı Yoğurt", birimAdet: 4, birimIsim: "Yemek Kaşığı Yoğurt", netGram: 180 },
+      { keys: ["suzme yogurt", "kese yogurdu"], Exclude: ["haydari", "atom", "meze"], degisimAciklama: "2 Tepeleme Yemek Kaşığı Süzme Yoğurt", birimAdet: 2, birimIsim: "Yemek Kaşığı", netGram: 75 },
+      { keys: ["ayran", "acik ayran", "yayik ayrani", "kapali ayran"], Exclude: ["asi", "corba"], degisimAciklama: "1,5 Su Bardağı Ayran (300 ml)", birimAdet: 1.5, birimIsim: "Su Bardağı Ayran", netGram: 300 },
+      { keys: ["kefir", "sade kefir"], Exclude: ["meyveli"], degisimAciklama: "1 Su Bardağı Kefir (200 ml)", birimAdet: 1, birimIsim: "Su Bardağı Kefir", netGram: 200 },
+      { keys: ["cacik"], Exclude: [], degisimAciklama: "1 Kase Cacık", birimAdet: 1, birimIsim: "Kase Cacık", netGram: 200 },
+
+      // 5. PEYNİR, YUMURTA, KAHVALTILIK ET DEĞİŞİMLERİ (1 Değişim = 69 kcal / 6g Pro, 5g Yağ)
+      { keys: ["haslanmis yumurta", "yumurta", "sahanda yumurta", "pose yumurta", "rafadan yumurta"], Exclude: ["kiymali", "sucuklu", "pastirmali", "ispanak", "menemen", "omlet", "pide", "salata", "pazi", "kavurma", "piyaz", "beyaz"], degisimAciklama: "1 Adet Yumurta (1 Et Değişimi)", birimAdet: 1, birimIsim: "Adet Yumurta", netGram: 50 },
+      { keys: ["yumurta aki", "yumurta beyazi"], Exclude: [], degisimAciklama: "3 Adet Yumurta Akı", birimAdet: 3, birimIsim: "Adet Yumurta Akı", netGram: 100 },
+      { keys: ["beyaz peynir", "ezine peyniri", "tulum peyniri", "keci peyniri", "koyun peyniri", "tam yagli beyaz peynir", "yarim yagli beyaz peynir", "light beyaz peynir", "orgu peyniri", "cecil peyniri", " van otlu peynir", "mihalic peyniri", "hellim"], Exclude: ["borek", "salata", "makarna", "gozleme", "pide", "omlet", "tost", "girit", "eriste", "poğaca", "simit"], degisimAciklama: "1 Dilim / Kibrit Kutusu Peynir", birimAdet: 1, birimIsim: "Dilim Peynir (30g)", netGram: 30 },
+      { keys: ["kasar peyniri", "taze kasar", "eski kasar", "kars gravyeri", "dil peyniri", "mozzarella", "cheddar", "gouda", "edam", "kolot peyniri", "kuymak peyniri"], Exclude: ["borek", "tost", "menemen", "pide", "corba", "mantar", "salata", "firin", "guvec", "kofte", "omlet", "gozleme", "su boregi"], degisimAciklama: "1 İnce Dilim Kaşar Peyniri", birimAdet: 1, birimIsim: "Dilim Kaşar (20g)", netGram: 20 },
+      { keys: ["lor peyniri", "cokelek", "kes peyniri", "ricotta"], Exclude: ["borek", "kurabiye", "makarna", "gozleme", "salata"], degisimAciklama: "3-4 Yemek Kaşığı Lor/Çökelek", birimAdet: 3, birimIsim: "Yemek Kaşığı", netGram: 50 },
+      { keys: ["labne", "krem peynir", "ucgen peynir", "karper", "suzme peynir", "cottage"], Exclude: ["tatli", "cheesecake", "tirami"], degisimAciklama: "1,5 Yemek Kaşığı / 2 Üçgen Peynir", birimAdet: 1.5, birimIsim: "Yemek Kaşığı", netGram: 30 },
+      { keys: ["pastirma", "cemenli pastirma", "cemensiz pastirma"], Exclude: ["fasulye", "humus", "pacanga", "yumurta", "pide"], degisimAciklama: "2-3 İnce Dilim Pastırma", birimAdet: 3, birimIsim: "Dilim Pastırma", netGram: 30 },
+      { keys: ["sucuk", "dana sucuk", "kangal sucuk"], Exclude: ["fasulye", "menemen", "yumurta", "pide", "tost", "gozleme", "izgara", "ekmek", "cevizli"], degisimAciklama: "4-5 İnce Dilim Sucuk", birimAdet: 4, birimIsim: "Dilim Sucuk", netGram: 30 },
+      { keys: ["hindi fume", "dana jambon", "salam", "sosis"], Exclude: ["tost", "sandvic", "pizza", "salata"], degisimAciklama: "2-3 Dilim Füme/Şarküteri", birimAdet: 2, birimIsim: "Dilim", netGram: 30 },
+      { keys: ["ton baligi"], Exclude: ["salata", "makarna", "sandvic", "pizza"], degisimAciklama: "1 Küçük Konserve (Süzülmüş)", birimAdet: 1, birimIsim: "Küçük Kutu (80g)", netGram: 80 },
+
+      // 6. ÇİĞ SEBZE VE YEŞİLLİKLER (Kahvaltılık / Söğüş)
+      { keys: ["domates", "ceri domates", "pembe domates", "salkim domates"], Exclude: ["corba", "pilav", "sos", "kurusu", "salca", "yemegi", "dolma", "suyu"], degisimAciklama: "1 Orta Boy Domates (veya 5-6 Çeri)", birimAdet: 1, birimIsim: "Orta Boy Domates", netGram: 120 },
+      { keys: ["salatalik", "hiyar", "cengelköy salatalik"], Exclude: ["corba", "tursu", "cacik"], degisimAciklama: "1 Orta Boy Salatalık", birimAdet: 1, birimIsim: "Orta Boy Salatalık", netGram: 120 },
+      { keys: ["yesil biber", "sivri biber", "carliston biber", "kapya biber", "kirmizi biber"], Exclude: ["dolma", "corba", "kizartma", "yogurtlu", "meze", "salca", "koz"], degisimAciklama: "2-3 Adet Biber", birimAdet: 2, birimIsim: "Adet Biber", netGram: 80 },
+      { keys: ["havuc", "cig havuc"], Exclude: ["tarator", "salata", "dilim", "kek", "toplari", "suyu", "pilav"], degisimAciklama: "1 Orta Boy Havuç", birimAdet: 1, birimIsim: "Orta Boy Havuç", netGram: 100 },
+
+      // 7. BAL, REÇEL, PEKMEZ, ŞEKER (Tatlı Kaşığı / Yemek Kaşığı)
+      { keys: ["bal", "suzme bal", "petek bal", "cam bali", "cicek bali", "pekmez", "uzum pekmezi", "keciboynuzu pekmezi", "dut pekmezi", "andiz pekmezi", "tahin pekmez", "recel", "cilek receli", "visne receli", "gul receli", "incir receli", "kayisi receli", "portakal receli", "marmelat"], Exclude: ["sut", "yogurt", "tavuk", "hardal", "kurabiye"], degisimAciklama: "1 Tatlı Kaşığı (10g)", birimAdet: 1, birimIsim: "Tatlı Kaşığı", netGram: 10 },
+      { keys: ["findik kremasi", "kakaolu findik kremasi", "nutella", "sarelle", "tahin helvasi", "yaz helvasi"], Exclude: ["firin"], degisimAciklama: "1 Tatlı Kaşığı / 1 İnce Dilim (15g)", birimAdet: 1, birimIsim: "Tatlı Kaşığı", netGram: 15 },
+      { keys: ["bitter cikolata", "sutlu cikolata", "beyaz cikolata"], Exclude: ["sos", "pasta", "kek", "kurabiye", "sut", "mus"], degisimAciklama: "2 Kare Çikolata (10g)", birimAdet: 2, birimIsim: "Kare Çikolata", netGram: 10 }
+    ];
+
+    // Besinin Pişmiş Yemek / Menü / Salata / Çorba / Tatlı (Porsiyon Usulü) olup olmadığını belirler
+    function isYemekVeyaMenu(food) {
+      if (!food) return false;
+      const cat = trNormalize(food.kategori || "");
+      const name = trNormalize(food.besin_adi || "");
+
+      // Önce Diyetisyen Değişim Sözlüğünde doğrudan eşleşen temel bir besin mi kontrol et
+      for (let rule of DIYETISYEN_DEGISIM_KURALLARI) {
+        const excluded = rule.Exclude.some(ex => name.includes(trNormalize(ex)));
+        if (excluded) continue;
+        const matched = rule.keys.some(k => {
+          const kNorm = trNormalize(k);
+          return name === kNorm || name.includes(kNorm);
+        });
+        if (matched && !cat.includes("corba") && !cat.includes("pilav") && !cat.includes("makarna") && !cat.includes("sebze yemekleri") && !cat.includes("baklagil") && !cat.includes("zeytinyagli") && !cat.includes("borek") && !cat.includes("kebap")) {
+          return false;
+        }
+      }
+
+      const yemekKategorileri = [
+        "corba", "kirmizi et", "beyaz et", "deniz urunleri", "baklagil",
+        "zeytinyagli", "sebze yemekleri", "pilav", "makarna", "eriste",
+        "manti", "hamur yemekleri", "borek", "kebap", "sokak lezzetleri",
+        "salata", "meze", "tatli", "fast food", "sandvic", "tost", "burger", "pizza",
+        "yumurta yemekleri"
+      ];
+
+      for (let yk of yemekKategorileri) {
+        if (cat.includes(yk)) return true;
+      }
+
+      if (
+        name.includes("corba") || name.includes("pilav") || name.includes("makarna") ||
+        name.includes("yemegi") || name.includes("dolma") || name.includes("sarma") ||
+        name.includes("kofte") || name.includes("kebap") || name.includes("kavurma") ||
+        name.includes("sote") || name.includes("haslama") || name.includes("izgara") ||
+        name.includes("firin") || name.includes("tava") || name.includes("guvec") ||
+        name.includes("menemen") || name.includes("omlet") || name.includes("kizartma") ||
+        name.includes("musakka") || name.includes("oturtma") || name.includes("borek") ||
+        name.includes("pide") || name.includes("lahmacun") || name.includes("durum") ||
+        name.includes("salata") || name.includes("komposto") || name.includes("hosaf") ||
+        name.includes("pilaki") || name.includes("mucver") || name.includes("tarator") ||
+        name.includes("tost") || name.includes("sandvic") || name.includes("burger") ||
+        name.includes("pizza") || name.includes("baklava") || name.includes("sutlac") ||
+        name.includes("muhallebi") || name.includes("revani") || name.includes("helva") ||
+        name.includes("kek") || name.includes("kurabiye") || name.includes("pogaca") ||
+        name.includes("acma") || name.includes("gozleme")
+      ) {
+        if (!name.includes("haslanmis yumurta") && !name.includes("haslanmis patates") && !name.includes("haslanmis misir") && !name.includes("tam bugday ekmegi") && !name.includes("tost ekmegi") && !name.includes("tava yogurdu")) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function getDiyetisyenDegisimKurali(food) {
+      if (!food || isYemekVeyaMenu(food)) return null;
+      const nameNorm = trNormalize(food.besin_adi || "");
+      const aliasNorm = trNormalize(food.arama_anahtarlari || "");
+
+      for (let rule of DIYETISYEN_DEGISIM_KURALLARI) {
+        const excluded = rule.Exclude.some(ex => nameNorm.includes(trNormalize(ex)));
+        if (excluded) continue;
+
+        const matched = rule.keys.some(k => {
+          const kNorm = trNormalize(k);
+          return nameNorm === kNorm || nameNorm.includes(kNorm) || aliasNorm.includes(kNorm);
+        });
+
+        if (matched) return rule;
+      }
+      return null;
+    }
+
+    // Hastane / Klinik Menü Servis Porsiyonu (Sadece Yemeklerde Çıkar)
     function getHastanePorsiyonu(food) {
-      if (!food) return null;
+      if (!food || !isYemekVeyaMenu(food)) return null;
       const cat = trNormalize(food.kategori || "");
       const name = trNormalize(food.besin_adi || "");
       const refG = Number(food.referans_miktar_g) || 100;
 
-      if (
-        cat.includes("ekmek") || name.includes("ekmek") || name.includes("roll") || name.includes("simit") || name.includes("pogaca") ||
-        cat.includes("peynir") || cat.includes("sut") || cat.includes("meyve") || cat.includes("kuruyemis") ||
-        cat.includes("yaglar") || cat.includes("baharat") || cat.includes("atistirmalik") || cat.includes("enteral") ||
-        cat.includes("bebek") || name.includes("yumurta") || name.includes("zeytin") || name.includes("ceviz") || name.includes("findik")
-      ) {
-        return null;
-      }
+      if (cat.includes("enteral") || cat.includes("bebek")) return null;
 
       let hGram = null;
       let aciklama = "1 Servis";
@@ -518,36 +686,31 @@
       if (cat.includes("corba") || name.includes("corba")) {
         hGram = 200;
         aciklama = "1 Kase / 1 Kepçe";
-      }
-      else if (cat.includes("pilav") || cat.includes("makarna") || cat.includes("eriste") || name.includes("pilav") || name.includes("makarna") || name.includes("bulgur") || name.includes("kuskus")) {
+      } else if (cat.includes("pilav") || cat.includes("makarna") || cat.includes("eriste") || name.includes("pilav") || name.includes("makarna") || name.includes("bulgur") || name.includes("kuskus") || name.includes("eriste")) {
         hGram = 130;
-        aciklama = "1 Kepçe / 4-5 YK";
-      }
-      else if (cat.includes("baklagil") || name.includes("kuru fasulye") || name.includes("nohut yemegi") || name.includes("barbunya pilaki") || name.includes("yesil mercimek yemegi")) {
+        aciklama = "1 Kepçe / 4-5 Yemek Kaşığı";
+      } else if (cat.includes("baklagil") || name.includes("kuru fasulye") || name.includes("nohut") || name.includes("barbunya") || name.includes("mercimek yemegi")) {
         hGram = 180;
         aciklama = "1 Tabak / 1 Kepçe";
-      }
-      else if (cat.includes("sebze yemekleri") || cat.includes("zeytinyagli") || name.includes("musakka") || name.includes("turlu") || name.includes("karniyarik") || name.includes("oturtma")) {
+      } else if (cat.includes("sebze yemekleri") || cat.includes("zeytinyagli") || name.includes("musakka") || name.includes("turlu") || name.includes("karniyarik") || name.includes("oturtma") || name.includes("dolma") || name.includes("sarma")) {
         hGram = 180;
         aciklama = "1 Servis Tabağı";
-      }
-      else if (cat.includes("kirmizi et") || cat.includes("beyaz et") || cat.includes("kebap") || name.includes("kofte") || name.includes("tavuk sote") || name.includes("haslama et") || name.includes("kebap")) {
+      } else if (cat.includes("kirmizi et") || cat.includes("beyaz et") || cat.includes("deniz urunleri") || cat.includes("kebap") || name.includes("kofte") || name.includes("sote") || name.includes("haslama") || name.includes("izgara") || name.includes("tava") || name.includes("firin")) {
         hGram = 120;
         aciklama = "1 Porsiyon Ana Yemek";
-      }
-      else if (name.includes("komposto") || name.includes("hosaf")) {
+      } else if (name.includes("komposto") || name.includes("hosaf")) {
         hGram = 160;
         aciklama = "1 Komposto Kasesi";
-      }
-      else if (cat.includes("salatalar") || name.includes("salata")) {
+      } else if (cat.includes("salata") || name.includes("salata") || name.includes("piyaz")) {
         hGram = 120;
         aciklama = "1 Salata Tabağı";
-      }
-      else if (cat.includes("borek") || name.includes("borek")) {
+      } else if (cat.includes("borek") || name.includes("borek")) {
+        hGram = 120;
+        aciklama = "1 Dilim / Porsiyon";
+      } else if (cat.includes("tatli") || name.includes("sutlac") || name.includes("muhallebi") || name.includes("revani")) {
         hGram = 130;
-        aciklama = "1 Porsiyon / Dilim";
-      }
-      else {
+        aciklama = "1 Kase / 1 Dilim";
+      } else {
         return null;
       }
 
@@ -559,98 +722,210 @@
       };
     }
 
+    // Seçenekleri Dolduran Ana Fonksiyon (Her seçenekte mutlaka gramaj yazar ve çok seçenek sunar)
     function populatePortionOptions(mIdx, food) {
       const portionSelect = document.getElementById(`food_portion_${mIdx}`);
       if (!portionSelect || !food) return;
 
       portionSelect.innerHTML = '';
       const refG = Number(food.referans_miktar_g) || 100;
-      const sp = String(food.standart_porsiyon || '');
+      const sp = String(food.standart_porsiyon || '1 Porsiyon');
+      const yemekMi = isYemekVeyaMenu(food);
       const hInfo = getHastanePorsiyonu(food);
+      const degisimKurali = getDiyetisyenDegisimKurali(food);
 
-      if (hInfo) {
-        const grpHastane = document.createElement('optgroup');
-        grpHastane.label = "🏥 Menü Servis Porsiyonu";
+      // =========================================================================
+      // DURUM 1: YEMEKLER, ÇORBALAR, PİLAVLAR, SALATALAR (SADECE PORSİYON USULÜ)
+      // =========================================================================
+      if (yemekMi) {
+        // A) Hastane / Klinik Menü Servis Porsiyonları
+        if (hInfo) {
+          const grpHastane = document.createElement('optgroup');
+          grpHastane.label = `🏥 Hastane / Klinik Menü Porsiyonu (1 Servis = ${hInfo.gram}g)`;
 
-        const optH = document.createElement('option');
-        optH.value = hInfo.multiplier;
-        optH.textContent = `🏥 Standart Yemek Porsiyonu (${hInfo.gram}g - ${hInfo.aciklama})`;
-        optH.selected = true;
-        grpHastane.appendChild(optH);
+          const hastaneSecenekleri = [
+            { kat: 0.25, ad: "Çeyrek (0.25) Hastane Porsiyonu" },
+            { kat: 0.5,  ad: "Yarım (0.5) Hastane Porsiyonu" },
+            { kat: 0.75, ad: "3/4 (0.75) Hastane Porsiyonu" },
+            { kat: 1.0,  ad: `1 Tam Hastane Porsiyonu - ${hInfo.aciklama}` },
+            { kat: 1.25, ad: "1.25 Hastane Porsiyonu" },
+            { kat: 1.5,  ad: "1.5 Hastane Porsiyonu" },
+            { kat: 2.0,  ad: "2 Hastane Porsiyonu (Çift Servis)" },
+            { kat: 2.5,  ad: "2.5 Hastane Porsiyonu" },
+            { kat: 3.0,  ad: "3 Hastane Porsiyonu" }
+          ];
 
-        if (hInfo.gram >= 80) {
-          const optHYarim = document.createElement('option');
-          optHYarim.value = (hInfo.multiplier * 0.5).toFixed(4);
-          optHYarim.textContent = `🏥 Yarım Porsiyon (${Math.round(hInfo.gram * 0.5)}g)`;
-          grpHastane.appendChild(optHYarim);
+          hastaneSecenekleri.forEach(hs => {
+            const opt = document.createElement('option');
+            opt.value = Number((hInfo.multiplier * hs.kat).toFixed(4));
+            const netG = Math.round(hInfo.gram * hs.kat);
+            opt.textContent = `🏥 ${hs.ad} (${netG}g)`;
+            if (hs.kat === 1.0) opt.selected = true;
+            grpHastane.appendChild(opt);
+          });
+          portionSelect.appendChild(grpHastane);
         }
 
-        portionSelect.appendChild(grpHastane);
+        // B) Standart / TBS / Ev & Lokanta Porsiyonları (Çoklu Seçenek + Gramaj)
+        const grpPorsiyon = document.createElement('optgroup');
+        grpPorsiyon.label = `🍽️ Standart Porsiyon Usulü (1 Porsiyon = ${sp} / ${Math.round(refG)}g)`;
+
+        const porsiyonKatlar = [
+          { val: 0.25, lbl: `Çeyrek (0.25) Porsiyon (${Math.round(refG * 0.25)}g)` },
+          { val: 0.5,  lbl: `Yarım (0.5) Porsiyon (${Math.round(refG * 0.5)}g)` },
+          { val: 0.75, lbl: `3/4 (0.75) Porsiyon (${Math.round(refG * 0.75)}g)` },
+          { val: 1.0,  lbl: `1 Tam Porsiyon - ${sp} (${Math.round(refG)}g)` },
+          { val: 1.25, lbl: `1.25 Porsiyon (${Math.round(refG * 1.25)}g)` },
+          { val: 1.5,  lbl: `1.5 Porsiyon (${Math.round(refG * 1.5)}g)` },
+          { val: 2.0,  lbl: `2 Porsiyon (${Math.round(refG * 2)}g)` },
+          { val: 2.5,  lbl: `2.5 Porsiyon (${Math.round(refG * 2.5)}g)` },
+          { val: 3.0,  lbl: `3 Porsiyon (${Math.round(refG * 3)}g)` },
+          { val: 4.0,  lbl: `4 Porsiyon (${Math.round(refG * 4)}g)` },
+          { val: 5.0,  lbl: `5 Porsiyon (${Math.round(refG * 5)}g)` }
+        ];
+
+        porsiyonKatlar.forEach(item => {
+          const opt = document.createElement('option');
+          opt.value = item.val;
+          opt.textContent = `🍽️ ${item.lbl}`;
+          if (!hInfo && item.val === 1.0) opt.selected = true;
+          grpPorsiyon.appendChild(opt);
+        });
+        portionSelect.appendChild(grpPorsiyon);
+
+        // C) Yemek Kaşığı / Kepçe / Kase Pratik Ev Ölçüleri (Çorba, Pilav, Makarna, Sebze, Baklagil için)
+        const grpEvOlcusu = document.createElement('optgroup');
+        grpEvOlcusu.label = "🥄 Yemek Kaşığı & Kepçe Bazlı Seçim (Net Gramajlı)";
+        const nameNorm = trNormalize(food.besin_adi || "");
+        const catNorm = trNormalize(food.kategori || "");
+
+        if (catNorm.includes("corba") || nameNorm.includes("corba") || nameNorm.includes("komposto") || nameNorm.includes("hosaf")) {
+          [
+            { ad: "Yarım Kepçe / Yarım Küçük Kase", g: 100 },
+            { ad: "1 Standart Kepçe / Küçük Kase", g: 180 },
+            { ad: "1 Dolu Kase", g: 250 },
+            { ad: "1.5 Kepçe / Büyük Kase", g: 300 },
+            { ad: "2 Kepçe / Duble Kase", g: 400 }
+          ].forEach(eo => {
+            const opt = document.createElement('option');
+            opt.value = (eo.g / refG).toFixed(4);
+            opt.textContent = `🥣 ${eo.ad} (${eo.g}g)`;
+            grpEvOlcusu.appendChild(opt);
+          });
+          portionSelect.appendChild(grpEvOlcusu);
+        } else if (
+          catNorm.includes("pilav") || catNorm.includes("makarna") || catNorm.includes("sebze") ||
+          catNorm.includes("zeytinyagli") || catNorm.includes("baklagil") || catNorm.includes("salata") ||
+          catNorm.includes("meze")
+        ) {
+          const kasikGram = (catNorm.includes("pilav") || catNorm.includes("makarna")) ? 25 : 30;
+          [1, 2, 3, 4, 5, 6, 7, 8, 10, 12].forEach(kSayi => {
+            const gVal = kSayi * kasikGram;
+            const opt = document.createElement('option');
+            opt.value = (gVal / refG).toFixed(4);
+            opt.textContent = `🥄 ${kSayi} Yemek Kaşığı (${gVal}g / ${(gVal / refG).toFixed(2)} Porsiyon)`;
+            grpEvOlcusu.appendChild(opt);
+          });
+          portionSelect.appendChild(grpEvOlcusu);
+        }
+
+        // D) Yemeklerde Adet/Dilim/Sıkım/Şiş Seçimi (Örn: Sarma, Dolma, Köfte, Börek, Lahmacun)
+        let unitCount = null;
+        let unitName = "Adet";
+        const mRange = sp.match(/(\d+)\s*[-–]\s*(\d+)\s*(Adet|Dilim|Sıkım|Şiş|Kanat|Kalem)/i);
+        if (mRange) {
+          unitCount = (Number(mRange[1]) + Number(mRange[2])) / 2;
+          unitName = mRange[3];
+        } else {
+          const mSingle = sp.match(/(\d+(?:\.\d+)?)\s*(?:[A-Za-zÇĞİÖŞÜçğıöşü]+\s+)?(Adet|Dilim|Sıkım|Şiş|Kanat|Kalem|Dürüm|Pide)/i);
+          if (mSingle) {
+            unitCount = Number(mSingle[1]);
+            unitName = mSingle[2];
+          }
+        }
+
+        if (unitCount && unitCount > 0) {
+          const grpAdet = document.createElement('optgroup');
+          grpAdet.label = `🔢 Tek Tek ${unitName} Seçimi (1 Porsiyon = ${sp} / ${Math.round(refG)}g)`;
+          [0.5, 1, 1.5, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 15].forEach(count => {
+            const multiplier = count / unitCount;
+            const gramVal = Math.round((refG / unitCount) * count);
+            const opt = document.createElement('option');
+            opt.value = multiplier.toFixed(4);
+            opt.textContent = `🔢 ${count} ${unitName} (${gramVal}g / ${multiplier.toFixed(2)} Porsiyon)`;
+            grpAdet.appendChild(opt);
+          });
+          portionSelect.appendChild(grpAdet);
+        }
+
+        portionSelect.value = hInfo ? String(hInfo.multiplier) : "1";
+        return;
       }
 
-      const grpDegisim = document.createElement('optgroup');
-      grpDegisim.label = "⚖️ Diyetisyen Değişim / Standart Porsiyon";
+      // =========================================================================
+      // DURUM 2: TEMEL BESİNLER (GERÇEK DİYETİSYEN DEĞİŞİM KURALLARI + BOL SEÇENEK)
+      // =========================================================================
+      const bazDegisimGram = degisimKurali ? degisimKurali.netGram : refG;
+      const bazMultiplier = bazDegisimGram / refG;
+      const bazAciklama = degisimKurali ? degisimKurali.degisimAciklama : sp;
+      const birimSayisi = degisimKurali ? degisimKurali.birimAdet : 1;
+      const birimAdi = degisimKurali ? degisimKurali.birimIsim : "Porsiyon/Adet";
 
-      const degisimList = [
-        { val: 0.25, lbl: `0.25 Değişim / Çeyrek (${Math.round(refG * 0.25)}g)` },
-        { val: 0.5,  lbl: `0.5 Değişim / Yarım (${Math.round(refG * 0.5)}g)` },
-        { val: 0.75, lbl: `0.75 Değişim (${Math.round(refG * 0.75)}g)` },
-        { val: 1.0,  lbl: `1 Tam Değişim / Standart (${Math.round(refG)}g)` },
-        { val: 1.5,  lbl: `1.5 Değişim (${Math.round(refG * 1.5)}g)` },
-        { val: 2.0,  lbl: `2 Değişim (${Math.round(refG * 2)}g)` },
-        { val: 2.5,  lbl: `2.5 Değişim (${Math.round(refG * 2.5)}g)` },
-        { val: 3.0,  lbl: `3 Değişim (${Math.round(refG * 3)}g)` },
-        { val: 4.0,  lbl: `4 Değişim (${Math.round(refG * 4)}g)` },
-        { val: 5.0,  lbl: `5 Değişim (${Math.round(refG * 5)}g)` }
+      // A) Gerçek Diyetisyen Değişim Katları (0.25 Değişimden 10 Değişime Kadar, Hepsi Gramajlı ve Açıklamalı)
+      const grpDegisim = document.createElement('optgroup');
+      grpDegisim.label = `⚖️ Diyetisyen Değişim Seçenekleri (1 Değişim = ${bazAciklama} / ${bazDegisimGram}g)`;
+
+      const degisimKatlar = [
+        0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 5.0, 6.0, 8.0, 10.0
       ];
 
-      degisimList.forEach(item => {
+      degisimKatlar.forEach(kat => {
         const opt = document.createElement('option');
-        opt.value = item.val;
-        opt.textContent = item.lbl;
-        if (!hInfo && item.val === 1.0) {
+        const realMult = Number((bazMultiplier * kat).toFixed(4));
+        const netG = Math.round(bazDegisimGram * kat);
+        const toplamBirim = Number((birimSayisi * kat).toFixed(2));
+
+        if (kat === 1.0) {
+          opt.textContent = `⚖️ 1 Değişim — ${bazAciklama} (${netG}g)`;
           opt.selected = true;
+        } else {
+          opt.textContent = `⚖️ ${kat} Değişim — ~${toplamBirim} ${birimAdi} (${netG}g)`;
         }
+        opt.value = realMult;
         grpDegisim.appendChild(opt);
       });
       portionSelect.appendChild(grpDegisim);
 
-      let unitCount = null;
-      let unitName = "Adet";
+      // B) Tek Tek Adet / Kaşık / Dilim / Tane Seçimi (1'den 30'a kadar geniş liste + Gramaj + Değişim karşılığı)
+      const grpAdet = document.createElement('optgroup');
+      grpAdet.label = `🔢 Tek Tek ${birimAdi} Seçimi (1 Değişim = ${birimSayisi} ${birimAdi} / ${bazDegisimGram}g)`;
 
-      const mRange = sp.match(/(\d+)\s*[-–]\s*(\d+)\s*(Adet|Dilim|Tane|Köfte|Sıkım|Kaşık|Yk|Tatlı Kaşığı|Yemek Kaşığı|Şiş|Kare|Bardak|Kase|Fincan|Kutu)/i);
-      if (mRange) {
-        unitCount = (Number(mRange[1]) + Number(mRange[2])) / 2;
-        unitName = mRange[3];
-      } else {
-        const mSingle = sp.match(/(\d+(?:\.\d+)?)\s*(?:[A-Za-zÇĞİÖŞÜçğıöşü]+\s+)?(Adet|Dilim|Tane|Köfte|Sıkım|Kaşık|Yk|Tatlı Kaşığı|Yemek Kaşığı|Şiş|Kare|Ceviz|Fındık|Zeytin|Yumurta|Pankek|Sarma|Dolma)/i);
-        if (mSingle) {
-          unitCount = Number(mSingle[1]);
-          unitName = mSingle[2];
-        }
-      }
+      const tekilSayilar = [0.5, 1, 1.5, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 15, 18, 20, 25, 30];
+      tekilSayilar.forEach(count => {
+        const degisimKarsiligi = count / birimSayisi;
+        const realMult = Number((bazMultiplier * degisimKarsiligi).toFixed(4));
+        const gramVal = Math.round(bazDegisimGram * degisimKarsiligi);
 
-      if (unitCount && unitCount > 0) {
-        const grpAdet = document.createElement('optgroup');
-        grpAdet.label = `🔢 ${unitName} Bazlı Seçim (1 Değişim = ${sp})`;
+        const opt = document.createElement('option');
+        opt.value = realMult;
+        opt.textContent = `🔢 ${count} ${birimAdi} (${gramVal}g — ${degisimKarsiligi.toFixed(2)} Değişim)`;
+        grpAdet.appendChild(opt);
+      });
+      portionSelect.appendChild(grpAdet);
 
-        const adetSayilari = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 15, 18, 20];
-        adetSayilari.forEach(count => {
-          const multiplier = count / unitCount;
-          const gramVal = Math.round((refG / unitCount) * count);
-          const opt = document.createElement('option');
-          opt.value = multiplier.toFixed(4);
-          opt.textContent = `${count} ${unitName} (${gramVal}g / ${multiplier.toFixed(2)} Değişim)`;
-          grpAdet.appendChild(opt);
-        });
-        portionSelect.appendChild(grpAdet);
-      }
+      // C) Hızlı Net Gramaj Seçenekleri (Dropdown içinden direkt gram seçmek isteyenler için)
+      const grpHizliGram = document.createElement('optgroup');
+      grpHizliGram.label = "⚖️ Hızlı Net Gramaj Seçimi";
+      [10, 15, 20, 25, 30, 40, 50, 60, 75, 100, 120, 150, 180, 200, 250, 300].forEach(g => {
+        const opt = document.createElement('option');
+        opt.value = Number((g / refG).toFixed(4));
+        const dKarsilik = (g / bazDegisimGram).toFixed(2);
+        opt.textContent = `📐 ${g}g Net (${dKarsilik} Değişim)`;
+        grpHizliGram.appendChild(opt);
+      });
+      portionSelect.appendChild(grpHizliGram);
 
-      if (hInfo) {
-        portionSelect.value = String(hInfo.multiplier);
-      } else {
-        portionSelect.value = "1";
-      }
+      portionSelect.value = String(Number(bazMultiplier.toFixed(4)));
     }
 
     function foodSelectedChanged(mIdx) {
@@ -661,12 +936,23 @@
       const gramInput = document.getElementById(`food_gram_${mIdx}`);
 
       if (food && label) {
+        const yemekMi = isYemekVeyaMenu(food);
         const hInfo = getHastanePorsiyonu(food);
-        if (hInfo) {
-          label.textContent = `🏥 Menü: ${hInfo.gram}g (Değişim: ${food.referans_miktar_g}g)`;
-          if (gramInput) gramInput.value = hInfo.gram;
+        const degisimKurali = getDiyetisyenDegisimKurali(food);
+
+        if (yemekMi) {
+          if (hInfo) {
+            label.textContent = `🏥 Hastane: ${hInfo.gram}g | 🍽️ 1 Porsiyon: ${food.referans_miktar_g}g`;
+            if (gramInput) gramInput.value = hInfo.gram;
+          } else {
+            label.textContent = `🍽️ 1 Porsiyon: ${food.standart_porsiyon} (${food.referans_miktar_g}g)`;
+            if (gramInput) gramInput.value = food.referans_miktar_g;
+          }
+        } else if (degisimKurali) {
+          label.textContent = `⚖️ 1 Değişim: ${degisimKurali.degisimAciklama} (${degisimKurali.netGram}g)`;
+          if (gramInput) gramInput.value = degisimKurali.netGram;
         } else {
-          label.textContent = `⚖️ Standart Değişim: ${food.referans_miktar_g}g`;
+          label.textContent = `⚖️ 1 Değişim: ${food.standart_porsiyon} (${food.referans_miktar_g}g)`;
           if (gramInput) gramInput.value = food.referans_miktar_g;
         }
         populatePortionOptions(mIdx, food);
@@ -689,11 +975,25 @@
         return;
       }
 
+      const formatFoodOptionLabel = (f) => {
+        const yemekMi = isYemekVeyaMenu(f);
+        const dKural = getDiyetisyenDegisimKurali(f);
+        const hInfo = getHastanePorsiyonu(f);
+        if (yemekMi) {
+          if (hInfo) return `${f.besin_adi} [Hastane: ${hInfo.gram}g | 1 Porsiyon: ${f.referans_miktar_g}g]`;
+          return `${f.besin_adi} [1 Porsiyon: ${f.standart_porsiyon} - ${f.referans_miktar_g}g]`;
+        }
+        if (dKural) {
+          return `${f.besin_adi} [1 Değişim: ${dKural.degisimAciklama} - ${dKural.netGram}g]`;
+        }
+        return `${f.besin_adi} [${f.standart_porsiyon} - ${f.referans_miktar_g}g]`;
+      };
+
       if (!query) {
         allFoods.slice(0, 100).forEach(f => {
           const opt = document.createElement('option');
           opt.value = f.id;
-          opt.textContent = `${f.besin_adi} [${f.standart_porsiyon}]`;
+          opt.textContent = formatFoodOptionLabel(f);
           select.appendChild(opt);
         });
         foodSelectedChanged(mIdx);
@@ -765,7 +1065,7 @@
         const f = item.food;
         const opt = document.createElement('option');
         opt.value = f.id;
-        opt.textContent = `${f.besin_adi} [${f.standart_porsiyon}]`;
+        opt.textContent = formatFoodOptionLabel(f);
         select.appendChild(opt);
       });
 
@@ -796,11 +1096,11 @@
         netMiktarG = food.referans_miktar_g * porsiyonCarpani;
 
         const selectedOptText = portionSelect?.options[portionSelect.selectedIndex]?.text || '';
-        olcuTanimi = selectedOptText || `${porsiyonCarpani} Değişim (${Math.round(netMiktarG)}g)`;
+        olcuTanimi = selectedOptText || `${porsiyonCarpani} Birim (${Math.round(netMiktarG)}g)`;
         carpim = porsiyonCarpani * (yuzde / 100);
       } else {
         netMiktarG = Number(document.getElementById(`food_gram_${mIdx}`).value) || food.referans_miktar_g;
-        olcuTanimi = `${netMiktarG} g/ml`;
+        olcuTanimi = `${netMiktarG} g/ml (Manuel Gramaj)`;
         const refGram = food.referans_miktar_g > 0 ? food.referans_miktar_g : 100;
         carpim = (netMiktarG / refGram) * (yuzde / 100);
       }
@@ -844,12 +1144,8 @@
       renderMealItems(mIdx);
       hesaplaVeGuncelle();
 
-      const portionSelectEl = document.getElementById(`food_portion_${mIdx}`);
-      if (portionSelectEl && food) {
-        const hInfo = getHastanePorsiyonu(food);
-        if (hInfo) portionSelectEl.value = String(hInfo.multiplier);
-        else portionSelectEl.value = "1";
-      }
+      // Ekleme sonrası varsayılan 1 Değişim / 1 Hastane Porsiyonuna geri döndür
+      foodSelectedChanged(mIdx);
     }
 
     function ogundenSil(mIdx, itemIdx) {
@@ -974,7 +1270,6 @@
         }
       }
 
-      // Eklenen Tüm Besinler Özeti Tablosunu Güncelle
       const summaryBody = document.getElementById('addedFoodsSummaryBody');
       if (summaryBody) {
         let allItemsHtml = '';
@@ -1296,7 +1591,7 @@
       XLSX.utils.book_append_sheet(wb, wsOzet, "Besin_Analiz_Ozeti");
 
       const besinData = [
-        ["Öğün", "Besin Adı", "Ölçü / Değişim", "Tüketim %", "Enerji (kcal)", "Karb (g)", "Protein (g)", "Yağ (g)", "Lif (g)"]
+        ["Öğün", "Besin Adı", "Ölçü / Değişim / Porsiyon", "Tüketim %", "Enerji (kcal)", "Karb (g)", "Protein (g)", "Yağ (g)", "Lif (g)"]
       ];
 
       MEALS.forEach(m => {
